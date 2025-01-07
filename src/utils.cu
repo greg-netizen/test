@@ -1,4 +1,5 @@
 #include "utils.h"
+#include "cmath"
 #include "opencv2/opencv.hpp"
 
 namespace gpu
@@ -83,5 +84,24 @@ __global__ void flatten(float* const* input, float* output, const dim3 inSz)
 
 
     }
+}
+namespace aifunc{
+    float* softmax(float* input, int inSz)
+    {
+        float sum = 0;
+        int max_elem = *std::max_element(input,input+inSz);
+        float *output = new float[inSz];
+
+        for(int i=0; i<inSz;i++)
+            sum+= exp(input[i]-max_elem);
+
+        std::cout<<"SUm: "<<sum<<std::endl;
+        for(int i=0;i<inSz;i++)
+            output[i] =  exp(input[i]-max_elem)/sum;
+
+
+        return output;
+    }
+
 }
 

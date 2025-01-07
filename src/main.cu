@@ -2,6 +2,39 @@
 #include <opencv2/opencv.hpp>
 #include <utils.h>
 
+struct Lenet
+{   Convolution2D convLayer1;
+    MaxPooling poolLayer1;
+    Convolution2D convLayer2;
+    MaxPooling poolLayer2;
+    int* flattenInput;
+    Dense layer1;
+    Dense layer2;
+    Dense output;
+
+    int predict();
+};
+
+
+int main() {
+
+    auto img = cv::imread("../media/img.png",cv::IMREAD_GRAYSCALE);
+    Matrix input = Matrix(0,0);
+    input.fromCVMAT(img);
+
+    Matrix kernel = Matrix(3,3);
+    kernel.data = new float[]{0,-1,0,-1,5,-1,0,-1,0};
+
+    auto convLayer = MaxPooling(input, 2);
+    convLayer.pool();
+
+    auto outputIMg = convLayer.output.toCVMAT();
+
+    cv::imshow("img",outputIMg);
+    cv::waitKey(0);
+
+}
+
 
 void test(cv::Mat img) {
     const int stride = 1;
@@ -131,8 +164,24 @@ void test2()
 
 }
 
-int main() {
-    // test(img); // Commented out for clarity
-    test2();
-    return 0;
+void test3()
+{
+    Dense a = Dense(10,5);
+
+    a.input = new float[]{0,1,2,3,4,5,6,7,8,9};
+
+    for(int i=0;i<5;i++)
+    {   a.biases[i] = i;
+        for(int j=0;j<10;j++)
+        {
+            a.weights[i][j] = j;
+        }
+    }
+
+    a.forward(aifunc::softmax);
+
+    for(int i=0;i<a.outputSize;i++)
+        std::cout<<a.output[i]<<" ";
+
+
 }
