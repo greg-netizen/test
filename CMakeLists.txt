@@ -16,6 +16,7 @@ include_directories(
 add_executable(LeNET src/main.cu
         include/utils.h
         src/utils.cu
+        include/weights.h
 )
 
 target_link_libraries(LeNET ${OpenCV_LIBS})

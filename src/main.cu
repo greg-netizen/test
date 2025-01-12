@@ -1,187 +1,218 @@
 #include <iostream>
 #include <opencv2/opencv.hpp>
+#include <filesystem>
 #include <utils.h>
+#include <weights.h>
 
 struct Lenet
-{   Convolution2D convLayer1;
-    MaxPooling poolLayer1;
-    Convolution2D convLayer2;
-    MaxPooling poolLayer2;
-    int* flattenInput;
-    Dense layer1;
-    Dense layer2;
+{
+    Convolution2D* convLayer1;
+    MaxPooling* poolLayer1;
+    Convolution2D* convLayer2;
+    MaxPooling* poolLayer2;
+    float* flattenInput;
+
+    Dense denseLayer1;
+    Dense denseLayer2;
     Dense output;
 
-    int predict();
+    Matrix filters;
+
+
+
+    int predict(Matrix image);
 };
 
+float* flattenMaxPoollLayer(MaxPooling* poolLayer, int size)
+{
+    const int imageRows = poolLayer[0].output.rows;
+    const int imageCols = poolLayer[0].output.cols;
+    float *output = new float[size * imageRows * imageCols];
+    for(int k = 0; k < size; k++)
+    {
+        for(int i = 0; i < imageRows; i++)
+            for(int j = 0; j < imageCols; j++)
+            {
+                output[k * imageRows * imageCols + i * imageCols + j] =
+                    poolLayer[k].output.data[i * imageCols + j];
+            }
+    }
+    return output;
+}
+
+
+
+
+
+namespace fs = std::filesystem;
 
 int main() {
+    try {
+        int correctCount = 0;
+        int totalCount = 0;
 
-    auto img = cv::imread("../media/img.png",cv::IMREAD_GRAYSCALE);
-    Matrix input = Matrix(0,0);
-    input.fromCVMAT(img);
+        // Iterate over all image files in the ../media folder
+        for (const auto& entry : fs::directory_iterator("../media")) {
+            const auto& path = entry.path();
 
-    Matrix kernel = Matrix(3,3);
-    kernel.data = new float[]{0,-1,0,-1,5,-1,0,-1,0};
+            // Check if the file is a valid image file
+            if (path.extension() == ".png" || path.extension() == ".jpg" || path.extension() == ".jpeg") {
+                totalCount++;
 
-    auto convLayer = MaxPooling(input, 2);
-    convLayer.pool();
+                // Load the image in grayscale
+                auto img = cv::imread(path.string(), cv::IMREAD_GRAYSCALE);
 
-    auto outputIMg = convLayer.output.toCVMAT();
+                if (img.empty()) {
+                    std::cerr << "Failed to load image: " << path << std::endl;
+                    continue;
+                }
 
-    cv::imshow("img",outputIMg);
-    cv::waitKey(0);
+                // Convert to your Matrix class
+                Matrix a;
+                a.fromCVMAT(img);
 
-}
+                // Create and use the LeNet model
+                Lenet lenet{};
+                int output = lenet.predict(a);
 
+                // Compare the output with the expected value (5)
+                if (output == 5) {
+                    correctCount++;
+                }
 
-void test(cv::Mat img) {
-    const int stride = 1;
-    const int poolSize = 2;
-
-    Matrix original = Matrix(4, 4);
-    original.fromCVMAT(img);
-
-
-    Matrix filter = Matrix(3, 3);
-    filter.data = new float[]{0, -1,0,-1,5,-1,0,-1,0};
-
-    // int output_rows = (original.rows - filter.rows)/stride + 1;
-    // int output_cols = (original.cols - filter.cols)/stride + 1;
-
-    int output_rows = (original.rows - poolSize)/stride + 1;
-    int output_cols = (original.cols - poolSize)/stride + 1;
-
-    Matrix final = Matrix(output_rows, output_cols);
-
-    float *da, *db, *dc;
-    cudaError_t err;
-
-    err = cudaMalloc(&da, original.rows * original.cols * sizeof(float));
-    if (err != cudaSuccess) {
-        std::cerr << "CUDA error: " << cudaGetErrorString(err) << std::endl;
-        return;
-    }
-
-    err = cudaMalloc(&db, filter.rows * filter.cols * sizeof(float));
-    if (err != cudaSuccess) {
-        std::cerr << "CUDA error: " << cudaGetErrorString(err) << std::endl;
-        return;
-    }
-
-    err = cudaMalloc(&dc, final.rows * final.cols * sizeof(float));
-    if (err != cudaSuccess) {
-        std::cerr << "CUDA error: " << cudaGetErrorString(err) << std::endl;
-        return;
-    }
-
-    cudaMemcpy(da, original.data, original.rows * original.cols * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(db, filter.data, filter.rows * filter.cols * sizeof(float), cudaMemcpyHostToDevice);
-
-
-    const dim3 inSz(original.rows, original.cols);
-    const dim3 outSz(output_rows, output_cols);
-    const dim3 kSz(filter.rows, filter.cols);
-
-    constexpr dim3 threadsPerBlock(16, 16);
-    const dim3 numBlocks(
-        (output_cols + threadsPerBlock.x - 1) / threadsPerBlock.x,
-        (output_rows + threadsPerBlock.y - 1) / threadsPerBlock.y
-    );
-
-    //gpu::convolution2D<<<numBlocks, threadsPerBlock>>>(da, db, dc, inSz, outSz, kSz, stride);
-gpu::maxPooling2D<<<numBlocks, threadsPerBlock>>>(da, dc, inSz, outSz,2,1);
-    cudaDeviceSynchronize();
-
-    cudaMemcpy(final.data, dc, final.rows * final.cols * sizeof(float), cudaMemcpyDeviceToHost);
-
-
-    auto newim = final.toCVMAT();
-    cv::imshow("image",newim);
-    cv::waitKey(0);
-
-    cudaFree(da);
-    cudaFree(db);
-    cudaFree(dc);
-}
-
-
-void test2()
-{
-    // Allocate and initialize host data
-    const int depth = 5, height = 2, width = 2;
-    float* h_data = new float[depth * height * width];
-    for (int i = 0; i < depth * height * width; i++)
-        h_data[i] = i + 1; // Initialize with appropriate values
-
-    // Allocate device memory
-    float* d_data;
-    float* d_rez;
-
-    cudaMalloc(&d_data, depth * height * width * sizeof(float));
-    cudaMalloc(&d_rez, depth * height * width * sizeof(float));
-
-    // Copy data from host to device
-    cudaMemcpy(d_data, h_data, depth * height * width * sizeof(float), cudaMemcpyHostToDevice);
-
-    // Allocate device pointer array
-    float** d_inputPtrs;
-    cudaMalloc(&d_inputPtrs, depth * sizeof(float*));
-
-    // Assign device pointers for each depth slice
-    for (int d = 0; d < depth; d++) {
-        cudaMemcpy(&d_inputPtrs[d], &d_data[d * height * width], sizeof(float*), cudaMemcpyHostToDevice);
-    }
-
-    // Set kernel launch parameters
-    const dim3 blockSize(2, 2, 1);
-    const dim3 gridSize((width + blockSize.x - 1) / blockSize.x,
-                        (height + blockSize.y - 1) / blockSize.y,
-                        (depth + blockSize.z - 1) / blockSize.z);
-
-    // Launch the kernel
-    gpu::flatten<<<gridSize, blockSize>>>(d_inputPtrs, d_rez, dim3(width, height, depth));
-    cudaDeviceSynchronize();
-
-    // Allocate host memory for results
-    float* rez = new float[depth * height * width];
-
-    // Copy results from device to host
-    cudaMemcpy(rez, d_rez, depth * height * width * sizeof(float), cudaMemcpyDeviceToHost);
-
-    // Print the results
-    for (int i = 0; i < depth * height * width; i++)
-        std::cout << rez[i] << " ";
-    std::cout << std::endl;
-
-    // Free allocated memory
-    delete[] h_data;
-    delete[] rez;
-    cudaFree(d_data);
-    cudaFree(d_rez);
-    cudaFree(d_inputPtrs);
-
-}
-
-void test3()
-{
-    Dense a = Dense(10,5);
-
-    a.input = new float[]{0,1,2,3,4,5,6,7,8,9};
-
-    for(int i=0;i<5;i++)
-    {   a.biases[i] = i;
-        for(int j=0;j<10;j++)
-        {
-            a.weights[i][j] = j;
+                std::cout << "Image: " << path.filename() << ", Prediction: " << output << std::endl;
+            }
         }
+
+        // Display the results
+        std::cout << "Total Images Processed: " << totalCount << std::endl;
+        std::cout << "Correct Predictions: " << correctCount << std::endl;
+        std::cout << "Accuracy: " << (static_cast<double>(correctCount) / totalCount) * 100 << "%" << std::endl;
+
+    } catch (cv::Exception& e) {
+        std::cerr << "OpenCV exception: " << e.what() << std::endl;
+        cleanWeights();
+        throw;
+    } catch (std::exception& e) {
+        std::cerr << "Standard exception: " << e.what() << std::endl;
     }
 
-    a.forward(aifunc::softmax);
+    return 0;
+}
+// Convolution2D* convLayer1;
+// MaxPooling* poolLayer1;
+// Convolution2D* convLayer2;
+// MaxPooling* poolLayer2;
+// int* flattenInput;
+// Dense layer1;
+// Dense layer2;
+// Dense output;
 
-    for(int i=0;i<a.outputSize;i++)
-        std::cout<<a.output[i]<<" ";
+int Lenet::predict(Matrix image)
+{
+
+    int filterConv1Size = 6;
+    int filterConv2Size = 16;
+
+    Matrix* filterConv1 = new Matrix[]{ filters::conv1Filter0,filters::conv1Filter1,filters::conv1Filter2,filters::conv1Filter3,filters::conv1Filter4,filters::conv1Filter5,};
+    Matrix* filterConv2 = new Matrix[]{filters::conv2Filter0,filters::conv2Filter1,filters::conv2Filter2,filters::conv2Filter3,filters::conv2Filter4,filters::conv2Filter5,filters::conv2Filter6,filters::conv2Filter7,filters::conv2Filter8,filters::conv2Filter9,filters::conv2Filter10,filters::conv2Filter11,filters::conv2Filter12,filters::conv2Filter13,filters::conv2Filter14,filters::conv2Filter15};
+
+    this->convLayer1 = new Convolution2D[filterConv1Size];
+    for (int i = 0; i < filterConv1Size; i++)
+    {
+        this->convLayer1[i] = Convolution2D(image, filterConv1[i]);
+        this->convLayer1[i].conv();
+    }
+
+    // First pooling layer
+    this->poolLayer1 = new MaxPooling[filterConv1Size];
+    for (int i = 0; i < filterConv1Size; i++)
+    {
+        this->poolLayer1[i] = MaxPooling(this->convLayer1[i].output, 2); // Pooling size 2
+        this->poolLayer1[i].pool();
+    }
+
+    // Sparse connectivity mapping (connectivity between layer 1 and layer 2)
+    const int sparseConnections[16][6] = {
+        {1, 1, 0, 0, 1, 1}, // Feature map 0 in conv2 connected to 1, 2, 5, 6 in conv1
+        {1, 0, 1, 0, 1, 0},
+        {0, 1, 1, 0, 0, 1},
+        {1, 0, 0, 1, 1, 0},
+        {0, 1, 0, 1, 0, 1},
+        {1, 1, 0, 0, 1, 0},
+        {0, 1, 1, 0, 0, 0},
+        {1, 0, 0, 1, 0, 1},
+        {0, 0, 1, 1, 1, 0},
+        {1, 1, 1, 0, 0, 0},
+        {0, 1, 0, 1, 1, 1},
+        {1, 0, 1, 1, 0, 0},
+        {0, 1, 1, 0, 1, 1},
+        {1, 0, 0, 1, 0, 0},
+        {0, 1, 0, 0, 1, 1},
+        {1, 0, 1, 0, 0, 1}
+    };
+
+    this->convLayer2 = new Convolution2D[filterConv2Size];
+    for (int j = 0; j < filterConv2Size; j++)
+    {
+
+        Matrix combinedInput = Matrix::zeros(this->poolLayer1[0].output.rows, this->poolLayer1[0].output.cols);
+        for (int i = 0; i < filterConv1Size; i++) // Iterate over the first layer's feature maps
+        {
+            if (sparseConnections[j][i] == 1) // Only connect if sparse mapping allows
+            {
+                combinedInput += this->poolLayer1[i].output;
+            }
+        }
+
+        // Perform convolution on the combined input
+        this->convLayer2[j] = Convolution2D(combinedInput, filterConv2[j]);
+        this->convLayer2[j].conv();
+    }
+
+
+    this->poolLayer2 = new MaxPooling[ filterConv2Size];
+    for(int i=0;i<filterConv2Size;i++)
+    {
+        this->poolLayer2[i] = MaxPooling(this->convLayer2[i].output,2);
+        this->poolLayer2[i].pool();
+    }
+
+
+    int heighSize = filterConv2Size ;
+    this->flattenInput =  flattenMaxPoollLayer(this->poolLayer2,heighSize);
+
+    int flattenRows = poolLayer2[0].output.rows;
+    int flattenCols = poolLayer2[0].output.cols;
+    int flattenInputSize = heighSize * flattenCols * flattenRows;
+
+
+    this->denseLayer1 = Dense(flattenInputSize,120, this->flattenInput);
+    denseLayer1.initWeights(weights1);
+    denseLayer1.forward(aifunc::relu);
+
+    this->denseLayer2 = Dense(120,84, this->denseLayer1.output);
+    denseLayer2.initWeights(weights2);
+    denseLayer2.forward(aifunc::relu);
+
+
+
+    this->output = Dense(84,10,this->denseLayer2.output);
+    output.initWeights(weights3);
+
+
+    output.forward(aifunc::softmax);
+
+    auto maxElemIter = std::max_element(output.output, output.output + output.outputSize);
+
+    // Calculate the index of the maximum element
+    int index = std::distance(output.output, maxElemIter);
+
+    delete[] filterConv1;
+    delete[] filterConv2;
+
+    return index;
+
 
 
 }

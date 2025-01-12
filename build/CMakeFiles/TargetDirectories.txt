@@ -1,0 +1,3 @@
+/home/cristian/Desktop/LeNET/build/CMakeFiles/LeNET.dir
+/home/cristian/Desktop/LeNET/build/CMakeFiles/edit_cache.dir
+/home/cristian/Desktop/LeNET/build/CMakeFiles/rebuild_cache.dir
