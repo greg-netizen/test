@@ -6,40 +6,42 @@
 #include <vector>
 #include <stdexcept>
 
-struct Matrix {
-    int rows = 0;
-    int cols = 0;
-    float* data;
+struct Matrix
+{
+    int rows;
+    int cols;
+    std::vector<float> data;
     Matrix();
-    Matrix(int rows, int cols , const float* data);
+    Matrix(int rows, int cols, std::vector<float> data=std::vector<float>{});
     Matrix(const Matrix& other);
-    Matrix& operator=(const Matrix& other);
-    ~Matrix();
-
+    Matrix operator+(const Matrix &other)const;
     void fromCVMAT(const cv::Mat& mat);
     cv::Mat toCVMAT(int type = CV_8UC1) const;
-    Matrix& operator+=(const Matrix& other);
-    static Matrix zeros(int rows, int cols);
 
-    void show() const;
+    static Matrix zeros(int rows, int cols){
+        Matrix output(rows,cols);
+        for(int i=0;i<rows*cols;i++)
+            output.data[i] = 0;
+
+        return output;
+
+    }
+
 };
 
 struct Dense {
     int inputSize;
     int outputSize;
-    float* input;
-    float* output;
-    float** weights;
-    float* biases;
+    std::vector<float> input;
+    std::vector<float> output;
+    std::vector<std::vector<float>> weights;
+    std::vector<float> biases;
 
     Dense();
-    Dense(int inSz, int outSz, const float* input = nullptr);
+    Dense(int inSz, int outSz, std::vector<float> input);
     Dense(const Dense& other);
-    Dense& operator=(const Dense& other);
-    ~Dense();
 
-    void initWeights(float** wghts);
-    void forward(std::function<float*(float*, int)> activationFunction = nullptr);
+    void forward(std::function<std::vector<float>(std::vector<float>, int)> activationFunction);
     void showOutput() const;
     void showInput() const;
 };
@@ -50,10 +52,8 @@ struct MaxPooling {
     int padding;
     int stride;
 
-    MaxPooling();
-    MaxPooling(const Matrix& in, int stride = 1, int padding = 0);
+    MaxPooling(const Matrix& in=Matrix()    , int stride = 1, int padding = 0);
     MaxPooling(const MaxPooling& other);
-    MaxPooling& operator=(const MaxPooling& other);
     void pool(int poolSize = 2);
 };
 
@@ -78,9 +78,10 @@ namespace gpu {
     __global__ void maxPooling2D(const float* input, float* output, dim3 inSz, dim3 outSz, int poolingSize, int stride);
 }
 
-namespace aifunc {
-    float* softmax(float* input, int inSz);
-    float* relu(float* input, int inSz);
+namespace aifunc
+{
+    std::vector<float> softmax(std::vector<float> input, int inSz);
+    std::vector<float> relu(std::vector<float> input, int inSz);
 }
 
-#endif // UTILS_H
+#endif

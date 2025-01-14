@@ -2,36 +2,25 @@
 #include <cmath>
 #include <opencv2/opencv.hpp>
 #include <stdexcept>
+Matrix::Matrix(){};
+Matrix::Matrix(int rows, int cols, std::vector<float>data):rows(rows),cols(cols),data(std::vector<float>(rows*cols)){};
+Matrix::Matrix(const Matrix& other):rows(other.rows),cols(other.cols),data(other.data){};
 
-Matrix::Matrix(): data(nullptr){};
-// Matrix Implementations
-Matrix::Matrix(int rows, int cols, const float* matrixData=nullptr)
-    : rows(rows), cols(cols) {
-    data = new float[rows * cols];
-    if (matrixData != nullptr)
-        std::copy(matrixData, matrixData + rows * cols, data);
-}
+Matrix Matrix::operator+(const Matrix& other) const
+{
+        if (rows != other.rows || cols != other.cols)
+        {
+            throw std::invalid_argument("Matrices must have the same dimensions for addition.");
+        }
+        Matrix result(rows, cols);
+        for (int i = 0; i < rows * cols; ++i)
+        {
+            result.data[i] = data[i] + other.data[i];
+        }
 
-Matrix::Matrix(const Matrix& other)
-    : rows(other.rows), cols(other.cols), data(new float[rows * cols]) {
-    std::copy(other.data, other.data + rows * cols, data);
-}
+        return result;
+    }
 
-Matrix& Matrix::operator=(const Matrix& m) {
-    if (this == &m)
-        return *this;
-
-    delete[] data;
-    rows = m.rows;
-    cols = m.cols;
-    data = new float[rows * cols];
-    std::copy(m.data, m.data + rows * cols, data);
-    return *this;
-}
-
-Matrix::~Matrix() {
-    delete[] data;
-}
 
 void Matrix::fromCVMAT(const cv::Mat& mat) {
     if (mat.type() != CV_8UC1)
@@ -39,10 +28,9 @@ void Matrix::fromCVMAT(const cv::Mat& mat) {
     if (mat.empty())
         throw std::invalid_argument("Image cannot be empty!");
 
-    rows = mat.rows;
-    cols = mat.cols;
-    delete[] data;
-    data = new float[rows * cols];
+    this->rows = mat.rows;
+    this->cols = mat.cols;
+    this->data = std::vector<float>(rows*cols);
 
     for (int row = 0; row < rows; row++)
         for (int col = 0; col < cols; col++)
@@ -50,7 +38,7 @@ void Matrix::fromCVMAT(const cv::Mat& mat) {
 }
 
 cv::Mat Matrix::toCVMAT(int type) const {
-    if (data == nullptr || rows <= 0 || cols <= 0)
+    if (data.empty() || rows <= 0 || cols <= 0)
         throw std::invalid_argument("No valid data to create the matrix");
 
     cv::Mat m(rows, cols, type);
@@ -60,141 +48,36 @@ cv::Mat Matrix::toCVMAT(int type) const {
     return m;
 }
 
-Matrix& Matrix::operator+=(const Matrix& other) {
-    if (rows != other.rows || cols != other.cols)
-        throw std::invalid_argument("Matrix dimensions must match for addition.");
-
-    for (int i = 0; i < rows * cols; ++i)
-        data[i] += other.data[i];
-
-    return *this;
-}
-
-Matrix Matrix::zeros(int rows, int cols) {
-    Matrix mat(rows, cols);
-    std::fill(mat.data, mat.data + rows * cols, 0.0f);
-    return mat;
-}
-
-void Matrix::show() const {
-    if (data == nullptr) {
-        std::cout << "nullptr";
-        return;
-    }
-
-    for (int i = 0; i < rows; i++) {
-        std::cout << std::endl;
-        for (int j = 0; j < cols; j++)
-            std::cout << data[i * cols + j] << " ";
-    }
-}
-
-
-// Dense Implementations
-Dense::Dense(): inputSize(0), outputSize(0), input(nullptr), output(nullptr), weights(nullptr), biases(nullptr)
+Dense::Dense(){};
+Dense::Dense(int inSz, int outSz, std::vector<float> input):inputSize(inSz),outputSize(outSz),input(input)
 {
+    this->biases = std::vector<float>(outSz);
+    for(int i=0;i<outSz;i++)
+        this->biases[i] = 0.1;
 };
-Dense::Dense(int inSz, int outSz, const float* input)
-    : inputSize(inSz), outputSize(outSz) {
-    input = new float[inputSize];
-    output = new float[outputSize];
-    weights = new float*[outputSize];
-    biases = new float[outputSize];
 
-    for (int i = 0; i < outputSize; ++i)
-        weights[i] = new float[inputSize];
+Dense::Dense(const Dense& other):
+inputSize(other.inputSize), outputSize(other.outputSize), input(other.input),
+output(other.output), weights(other.weights), biases(other.biases){}
 
-    if (input)
-        std::memcpy(this->input, input, inputSize * sizeof(float));
 
-    std::fill(biases, biases + outputSize, 0.0f);
-    std::fill(output, output + outputSize, 0.0f);
-}
 
-Dense::Dense(const Dense& other)
-    : inputSize(other.inputSize), outputSize(other.outputSize) {
-    input = new float[inputSize];
-    std::memcpy(input, other.input, inputSize * sizeof(float));
-
-    output = new float[outputSize];
-    std::memcpy(output, other.output, outputSize * sizeof(float));
-
-    weights = new float*[outputSize];
-    for (int i = 0; i < outputSize; ++i) {
-        weights[i] = new float[inputSize];
-        std::memcpy(weights[i], other.weights[i], inputSize * sizeof(float));
-    }
-
-    biases = new float[outputSize];
-    std::memcpy(biases, other.biases, outputSize * sizeof(float));
-}
-
-Dense& Dense::operator=(const Dense& source) {
-    if (this == &source)
-        return *this;
-
-    delete[] input;
-    delete[] output;
-    delete[] biases;
-    for (int i = 0; i < outputSize; ++i)
-        delete[] weights[i];
-    delete[] weights;
-
-    inputSize = source.inputSize;
-    outputSize = source.outputSize;
-
-    input = new float[inputSize];
-    std::memcpy(input, source.input, inputSize * sizeof(float));
-
-    output = new float[outputSize];
-    std::memcpy(output, source.output, outputSize * sizeof(float));
-
-    weights = new float*[outputSize];
-    for (int i = 0; i < outputSize; ++i) {
-        weights[i] = new float[inputSize];
-        std::memcpy(weights[i], source.weights[i], inputSize * sizeof(float));
-    }
-
-    biases = new float[outputSize];
-    std::memcpy(biases, source.biases, outputSize * sizeof(float));
-
-    return *this;
-}
-
-void Dense::initWeights(float** wghts) {
-    for (int i = 0; i < outputSize; i++)
-        biases[i] = 0.1f;
-
-    for (int i = 0; i < outputSize; i++)
-        std::copy(wghts[i], wghts[i] + inputSize, weights[i]);
-}
-
-void Dense::forward(std::function<float*(float*, int)> activationFunction) {
+void Dense::forward(std::function<std::vector<float>(std::vector<float>, int)> activationFunction) {
     for (int neuron = 0; neuron < outputSize; neuron++) {
         float sum = 0.0f;
         for (int i = 0; i < inputSize; i++)
             sum += weights[neuron][i] * input[i];
-        output[neuron] = sum + biases[neuron];
+        output.push_back(sum + biases[neuron]) ;
     }
 
     if (activationFunction != nullptr) {
-        float* activated_output = activationFunction(output, outputSize);
-        std::copy(activated_output, activated_output + outputSize, output);
-        delete[] activated_output;
+        std::vector<float> activated_output = activationFunction(output, outputSize);
+        this->output = activated_output;
     }
 }
 
-Dense::~Dense() {
-    delete[] input;
-    delete[] output;
-    delete[] biases;
-    for (int i = 0; i < outputSize; ++i)
-        delete[] weights[i];
-    delete[] weights;
-}
 
 // MaxPooling Implementations
-MaxPooling::MaxPooling(): padding(0), stride(1){};
 MaxPooling::MaxPooling(const Matrix& in, int stride, int padding)
     : input(in), output(Matrix(0, 0)), stride(stride), padding(padding) {
     int outputRows = (input.rows - 2 * padding) / stride + 1;
@@ -205,16 +88,6 @@ MaxPooling::MaxPooling(const Matrix& in, int stride, int padding)
 MaxPooling::MaxPooling(const MaxPooling& other)
     : input(other.input), output(other.output), stride(other.stride), padding(other.padding) {}
 
-MaxPooling& MaxPooling::operator=(const MaxPooling& other) {
-    if (this == &other)
-        return *this;
-    input = other.input;
-    output = other.output;
-    stride = other.stride;
-    padding = other.padding;
-    return *this;
-}
-
 void MaxPooling::pool(int poolSize) {
     dim3 inSz(input.rows, input.cols);
     dim3 outSz(output.rows, output.cols);
@@ -222,7 +95,7 @@ void MaxPooling::pool(int poolSize) {
     float* d_in, *d_out;
     cudaMalloc(&d_in, inSz.x * inSz.y * sizeof(float));
     cudaMalloc(&d_out, outSz.x * outSz.y * sizeof(float));
-    cudaMemcpy(d_in, input.data, inSz.x * inSz.y * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_in, input.data.data(), inSz.x * inSz.y * sizeof(float), cudaMemcpyHostToDevice);
 
     dim3 threadsPerBlock(16, 16);
     dim3 numBlocks((output.cols + threadsPerBlock.x - 1) / threadsPerBlock.x,
@@ -231,15 +104,16 @@ void MaxPooling::pool(int poolSize) {
     gpu::maxPooling2D<<<numBlocks, threadsPerBlock>>>(d_in, d_out, inSz, outSz, poolSize, stride);
     cudaDeviceSynchronize();
 
-    cudaMemcpy(output.data, d_out, output.rows * output.cols * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(output.data.data(), d_out, output.rows * output.cols * sizeof(float), cudaMemcpyDeviceToHost);
     cudaFree(d_in);
     cudaFree(d_out);
 }
 
 // Convolution2D Implementations
-Convolution2D::Convolution2D(): padding(0), stride(1){};
+Convolution2D::Convolution2D(){};
 Convolution2D::Convolution2D(const Matrix& in, const Matrix& kernel, int stride, int padding)
-    : input(in), kernel(kernel), stride(stride), padding(padding) {
+    : input(in), output(Matrix()), kernel(kernel), stride(stride), padding(padding)
+{
     int outputRows = (input.rows - kernel.rows + 2 * padding) / stride + 1;
     int outputCols = (input.cols - kernel.cols + 2 * padding) / stride + 1;
     output = Matrix(outputRows, outputCols);
@@ -268,8 +142,8 @@ void Convolution2D::conv() {
     cudaMalloc(&d_in, inSz.x * inSz.y * sizeof(float));
     cudaMalloc(&d_out, outSz.x * outSz.y * sizeof(float));
     cudaMalloc(&d_kernel, kSz.x * kSz.y * sizeof(float));
-    cudaMemcpy(d_in, input.data, inSz.x * inSz.y * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_kernel, kernel.data, kSz.x * kSz.y * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_in, input.data.data(), inSz.x * inSz.y * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_kernel, kernel.data.data(), kSz.x * kSz.y * sizeof(float), cudaMemcpyHostToDevice);
 
     dim3 threadsPerBlock(16, 16);
     dim3 numBlocks((output.cols + threadsPerBlock.x - 1) / threadsPerBlock.x,
@@ -278,24 +152,24 @@ void Convolution2D::conv() {
     gpu::convolution2D<<<numBlocks, threadsPerBlock>>>(d_in, d_kernel, d_out, inSz, outSz, kSz, stride);
     cudaDeviceSynchronize();
 
-    cudaMemcpy(output.data, d_out, output.rows * output.cols * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(output.data.data(), d_out, output.rows * output.cols * sizeof(float), cudaMemcpyDeviceToHost);
     cudaFree(d_in);
     cudaFree(d_out);
     cudaFree(d_kernel);
 }
 
 // Namespace aifunc Implementations
-float* aifunc::relu(float* input, int inSz) {
-    float* output = new float[inSz];
+std::vector<float> aifunc::relu(std::vector<float> input, int inSz) {
+    std::vector<float> output(inSz);
     for (int i = 0; i < inSz; ++i)
         output[i] = std::max(0.0f, input[i]);
     return output;
 }
 
-float* aifunc::softmax(float* input, int inSz) {
+std::vector<float> aifunc::softmax(std::vector<float> input, int inSz) {
     float sum = 0.0f;
-    float maxElem = *std::max_element(input, input + inSz);
-    float* output = new float[inSz];
+    float maxElem = *std::max_element(input.begin(), input.end());
+    std::vector<float> output(inSz);
 
     for (int i = 0; i < inSz; ++i)
         sum += std::exp(input[i] - maxElem);
